@@ -10,23 +10,30 @@ const Feedback = () => {
     };
     getFeedbacks();
   }, []);
-  const handleDelete = async (id) => {
-    try {
-      const responce = await fetch(`https://feedback-manager-fs.vercel.app/feedback/${id}`, {
+ const handleDelete = async (id) => {
+  try {
+    const responce = await fetch(
+      `https://feedback-manager-fs.vercel.app/feedback/${id}`,
+      {
         method: "DELETE",
-      });
-      if (responce.ok) {
-        alert("Deleted successfully....")
-        console.log("Deleted from database successfully");
-        setFeedback((prev) => prev.filter((f) => f._id !== id));
-      } else {
-        const errorData = await response.json();
-        console.error("Failed to delete:", errorData.message);
       }
-    } catch (error) {
-      console.log(error);
+    );
+
+    if (responce.ok) {
+      alert("Deleted successfully....");
+
+      setFeedback((prev) =>
+        prev.filter((f) => f._id !== id)
+      );
+    } else {
+      const errorData = await responce.json();
+
+      console.error("Failed to delete:", errorData.message);
     }
-  };
+  } catch (error) {
+    console.log(error);
+  }
+};
   return (
     <div>
       <h1>Feedbacks</h1>

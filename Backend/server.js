@@ -11,6 +11,8 @@ app.use(express.json())
 //   origin: 'http://localhost:5173'
 // }));
 
+app.use(cors())
+
 app.get("/", (req, res) => {
     res.redirect("/feedback");
 });
@@ -19,6 +21,8 @@ app.use("/feedback",feedbackRouter)
 
 connectDb()
 
-app.listen(5000, ()=>{
-    console.log("Server is runnig......")
-})
+// app.listen(5000, ()=>{
+//     console.log("Server is runnig......")
+// })
+
+export default app;
