@@ -4,7 +4,7 @@ const Feedback = () => {
   const [feedback, setFeedback] = useState([]);
   useEffect(() => {
     const getFeedbacks = async () => {
-      const responce = await fetch("http://localhost:5000/feedback");
+      const responce = await fetch("https://feedback-manager-fs.vercel.app/feedback");
       const data = await responce.json();
       setFeedback(data);
     };
@@ -12,7 +12,7 @@ const Feedback = () => {
   }, []);
   const handleDelete = async (id) => {
     try {
-      const responce = await fetch(`http://localhost:5000/feedback/${id}`, {
+      const responce = await fetch(`https://feedback-manager-fs.vercel.app/feedback/${id}`, {
         method: "DELETE",
       });
       if (responce.ok) {

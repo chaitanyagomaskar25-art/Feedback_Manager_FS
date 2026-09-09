@@ -10,7 +10,7 @@ const Home = () => {
   } = useForm();
   const onSubmit = (data) => {
     const sendFeedbacks = async () => {
-      const responce = await fetch("http://localhost:5000/feedback", {
+      const responce = await fetch("https://feedback-manager-fs.vercel.app/feedback", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
