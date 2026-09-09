@@ -11,9 +11,9 @@ const Footer = () => {
           <div className="space-y-4">
             <NavLink to="/" className="flex items-center space-x-2 text-xl font-bold text-white">
               <span className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-sm">
-                A
+                F
               </span>
-              <span>AppBrand</span>
+              <span>Feedback</span>
             </NavLink>
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
               Empowering your experience with modern web solutions. Built for performance and designed with simplicity.
