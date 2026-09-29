@@ -4,8 +4,7 @@ const Feedback = () => {
   const [feedback, setFeedback] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal States
-  const [deleteId, setDeleteId] = useState(null); // ID of item targeted for deletion
+  const [deleteId, setDeleteId] = useState(null); 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
@@ -26,7 +25,6 @@ const Feedback = () => {
     getFeedbacks();
   }, []);
 
-  // Confirm and process deletion
   const confirmDelete = async () => {
     if (!deleteId) return;
 
@@ -56,7 +54,6 @@ const Feedback = () => {
 
   return (
     <div className="max-w-6xl mx-auto py-6 relative">
-      {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 mb-8 border-b border-slate-200">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -67,7 +64,6 @@ const Feedback = () => {
           </p>
         </div>
 
-        {/* Date Filter Bar */}
         <div className="flex items-center space-x-3 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-xs">
           <label htmlFor="date-filter" className="text-xs font-semibold text-slate-600 whitespace-nowrap uppercase tracking-wider">
             Filter by Date:
@@ -80,9 +76,7 @@ const Feedback = () => {
         </div>
       </div>
 
-      {/* Content Area */}
       {isLoading ? (
-        // Loading State Skeleton
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map((n) => (
             <div key={n} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs animate-pulse space-y-4">
@@ -93,12 +87,10 @@ const Feedback = () => {
           ))}
         </div>
       ) : feedback.length === 0 ? (
-        // Empty State
         <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
           <p className="text-slate-500 font-medium">No feedback items found.</p>
         </div>
       ) : (
-        // Feedback Cards Grid
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {feedback.map((f) => (
             <div
@@ -106,7 +98,6 @@ const Feedback = () => {
               className="bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-200 p-6 flex flex-col justify-between"
             >
               <div>
-                {/* Header: Name + Rating Badge */}
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <h3 className="font-bold text-slate-900 text-lg leading-snug">
                     {f.name}
@@ -116,13 +107,11 @@ const Feedback = () => {
                   </span>
                 </div>
 
-                {/* Comment */}
                 <p className="text-slate-600 text-sm leading-relaxed mb-6">
                   "{f.comment}"
                 </p>
               </div>
 
-              {/* Card Footer: Date + Delete Button */}
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
                 <span className="text-slate-400 font-medium">
                   {new Date(f.createdAt).toLocaleDateString("en-IN", {
@@ -147,7 +136,6 @@ const Feedback = () => {
         </div>
       )}
 
-      {/* Modern Delete Confirmation Modal */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl border border-slate-100 transform transition-all scale-100 animate-in zoom-in-95 duration-200">
@@ -193,7 +181,6 @@ const Feedback = () => {
         </div>
       )}
 
-      {/* Modern Success Notification Popup */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl border border-slate-100 transform transition-all scale-100 animate-in zoom-in-95 duration-200">

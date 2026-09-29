@@ -38,7 +38,6 @@ const Home = () => {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 relative">
-      {/* Hero Header Section */}
       <div className="text-center max-w-2xl mx-auto mb-12">
         <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight sm:text-5xl">
           Welcome & Share Feedback
@@ -48,14 +47,12 @@ const Home = () => {
         </p>
       </div>
 
-      {/* Form Card */}
       <div className="max-w-xl mx-auto bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 sm:p-8">
         <h2 className="text-xl font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">
           Submit Your Review
         </h2>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          {/* Name Field */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
               Your Name
@@ -77,7 +74,6 @@ const Home = () => {
             )}
           </div>
 
-          {/* Rating Field */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
               Rating
@@ -104,7 +100,6 @@ const Home = () => {
             )}
           </div>
 
-          {/* Comment Field */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
               Comment
@@ -126,7 +121,6 @@ const Home = () => {
             )}
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={isSubmitting}
@@ -147,11 +141,9 @@ const Home = () => {
         </form>
       </div>
 
-      {/* Modern Success Modal / Popup */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl border border-slate-100 transform transition-all scale-100 animate-in zoom-in-95 duration-200">
-            {/* Success Icon */}
             <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-4">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
