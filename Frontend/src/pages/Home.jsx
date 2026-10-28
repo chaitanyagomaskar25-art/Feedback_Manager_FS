@@ -1,169 +1,236 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { apiRequest } from "../api";
+import { useAuth } from "../auth/AuthContext";
 
 const Home = () => {
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
     reset,
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      name: user?.name ?? "",
+      rating: "",
+      category: "Product",
+      comment: "",
+      anonymous: false,
+    },
+  });
+
+  const rating = Number(watch("rating", 0));
+  const comment = watch("comment", "");
+  const anonymous = watch("anonymous", false);
 
   const onSubmit = async (data) => {
     setIsSubmitting(true);
+    setSubmitError("");
+    setIsSubmitted(false);
     try {
-      const response = await fetch("https://feedback-manager-fs.vercel.app/feedback", {
+      await apiRequest("/feedback", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(data),
       });
 
-      if (response.ok) {
-        setShowSuccessModal(true);
-        reset();
-      } else {
-        console.error("Failed to submit feedback");
-      }
+      reset();
+      setIsSubmitted(true);
     } catch (error) {
-      console.error("Error submitting feedback:", error);
+      setSubmitError(error.message || "We couldn't reach the server. Check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 relative">
-      <div className="text-center max-w-2xl mx-auto mb-12">
-        <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight sm:text-5xl">
-          Welcome & Share Feedback
-        </h1>
-        <p className="mt-4 text-base text-slate-600 leading-relaxed">
-          We value your experience! Leave your feedback below to help us continuously standardise and improve our platform.
-        </p>
-      </div>
+    <div className="home-page">
+      <section className="hero">
+        <div>
+          <p className="eyebrow"><span className="eyebrow-dot" /> A little note goes a long way</p>
+          <h1>Good things grow<br />from <span>good feedback.</span></h1>
+          <p className="hero-copy">
+            Tell us what made your day, what could be better, or anything in between.
+            Every thought helps us make this experience a little more thoughtful.
+          </p>
+        </div>
+        <div className="hero-art" aria-hidden="true">
+          <div className="hero-art-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3.75h5.25M6.75 3.75h10.5A2.25 2.25 0 0 1 19.5 6v9a2.25 2.25 0 0 1-2.25 2.25h-4.5l-4.5 3v-3h-1.5A2.25 2.25 0 0 1 4.5 15V6a2.25 2.25 0 0 1 2.25-2.25Z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="m18.7 2 .55 1.7L21 4.25l-1.75.55L18.7 6.5l-.55-1.7-1.7-.55 1.7-.55L18.7 2Z" />
+            </svg>
+          </div>
+          <p>Your voice makes a difference</p>
+        </div>
+      </section>
 
-      <div className="max-w-xl mx-auto bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 sm:p-8">
-        <h2 className="text-xl font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">
-          Submit Your Review
-        </h2>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-              Your Name
-            </label>
-            <input
-              {...register("name", {
-                required: "Name is required",
-              })}
-              type="text"
-              placeholder="e.g. John Doe"
-              className={`w-full px-4 py-2.5 rounded-xl border ${
-                errors.name ? "border-red-500 focus:ring-red-200" : "border-slate-300 focus:ring-blue-200 focus:border-blue-600"
-              } text-slate-800 placeholder-slate-400 text-sm outline-none transition-all duration-150 focus:ring-4`}
-            />
-            {errors.name && (
-              <p className="mt-1.5 text-xs text-red-600 font-medium flex items-center">
-                <span className="mr-1">⚠️</span> {errors.name.message}
-              </p>
-            )}
+      <div className="content-grid">
+        <section className="panel form-panel" aria-labelledby="feedback-form-title">
+          <div className="panel-heading">
+            <div>
+              <h2 id="feedback-form-title">Share your experience</h2>
+              <p>A couple of details, and you’re all set.</p>
+            </div>
+            <span className="step-pill">✦ &nbsp;Quick & easy</span>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-              Rating
+          <form className="form-fields" onSubmit={handleSubmit(onSubmit)} noValidate>
+            {!anonymous && <div>
+              <label className="field-label" htmlFor="feedback-name">Your name</label>
+              <input
+                id="feedback-name"
+                {...register("name", {
+                  validate: (value, values) => values.anonymous || value.trim().length > 0 || "Please add your name.",
+                })}
+                className={`field-input${errors.name ? " has-error" : ""}`}
+                type="text"
+                placeholder="How should we address you?"
+                autoComplete="name"
+                aria-invalid={Boolean(errors.name)}
+                aria-describedby={errors.name ? "name-error" : undefined}
+              />
+              {errors.name && <p className="field-error" id="name-error">{errors.name.message}</p>}
+            </div>}
+
+            <label className="anonymous-option">
+              <input type="checkbox" {...register("anonymous")} />
+              <span className="anonymous-check" aria-hidden="true">✓</span>
+              <span>
+                <strong>Submit anonymously</strong>
+                <small>Your name won’t appear with your feedback.</small>
+              </span>
             </label>
-            <select
-              {...register("rating", {
-                required: "You must choose a rating",
-              })}
-              className={`w-full px-4 py-2.5 rounded-xl border ${
-                errors.rating ? "border-red-500 focus:ring-red-200" : "border-slate-300 focus:ring-blue-200 focus:border-blue-600"
-              } text-slate-800 text-sm outline-none bg-white transition-all duration-150 focus:ring-4`}
-            >
-              <option value="">Choose a rating rating (1 to 5 stars)</option>
-              <option value="1">1 Star - Very Poor</option>
-              <option value="2">2 Stars - Poor</option>
-              <option value="3">3 Stars - Average</option>
-              <option value="4">4 Stars - Good</option>
-              <option value="5">5 Stars - Excellent</option>
-            </select>
-            {errors.rating && (
-              <p className="mt-1.5 text-xs text-red-600 font-medium flex items-center">
-                <span className="mr-1">⚠️</span> {errors.rating.message}
-              </p>
-            )}
-          </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-              Comment
-            </label>
-            <textarea
-              {...register("comment", {
-                required: "You must add a comment",
-              })}
-              rows="4"
-              placeholder="Tell us about your experience..."
-              className={`w-full px-4 py-2.5 rounded-xl border ${
-                errors.comment ? "border-red-500 focus:ring-red-200" : "border-slate-300 focus:ring-blue-200 focus:border-blue-600"
-              } text-slate-800 placeholder-slate-400 text-sm outline-none transition-all duration-150 focus:ring-4 resize-none`}
-            ></textarea>
-            {errors.comment && (
-              <p className="mt-1.5 text-xs text-red-600 font-medium flex items-center">
-                <span className="mr-1">⚠️</span> {errors.comment.message}
-              </p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl text-sm shadow-md shadow-blue-500/20 transition-all duration-150 focus:ring-4 focus:ring-blue-200 outline-none flex items-center justify-center space-x-2 cursor-pointer"
-          >
-            {isSubmitting ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Submitting...</span>
-              </>
-            ) : (
-              <span>Submit Feedback</span>
-            )}
-          </button>
-        </form>
-      </div>
-
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl border border-slate-100 transform transition-all scale-100 animate-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-              </svg>
+            <div>
+              <span className="field-label" id="rating-label">How was your experience?</span>
+              <input
+                type="hidden"
+                {...register("rating", { required: "Please choose a star rating." })}
+              />
+              <div className="rating-row" role="group" aria-labelledby="rating-label">
+                <div className="star-picker">
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <button
+                      key={value}
+                      className={`star-button${value <= rating ? " selected" : ""}`}
+                      type="button"
+                      aria-label={`${value} ${value === 1 ? "star" : "stars"}`}
+                      aria-pressed={rating === value}
+                      onClick={() => setValue("rating", String(value), {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      })}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+                <span className="rating-hint">
+                  {rating ? ["", "Not great", "Could be better", "It was okay", "Really good", "Loved it"][rating] : "Choose a rating"}
+                </span>
+              </div>
+              {errors.rating && <p className="field-error" role="alert">{errors.rating.message}</p>}
             </div>
 
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Thank You!</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              Your feedback has been successfully submitted and stored.
-            </p>
+            <div>
+              <label className="field-label" htmlFor="feedback-category">What is your feedback about?</label>
+              <select id="feedback-category" className="field-input" {...register("category", { required: true })}>
+                <option value="Product">Product</option>
+                <option value="Service">Service</option>
+                <option value="Teaching">Teaching</option>
+                <option value="Event">Event</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
 
-            <button
-              onClick={() => setShowSuccessModal(false)}
-              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-xl transition-colors duration-150 outline-none"
-            >
-              Close
+            <div>
+              <label className="field-label" htmlFor="feedback-comment">Your thoughts</label>
+              <textarea
+                id="feedback-comment"
+                {...register("comment", {
+                  required: "Please share a few words with us.",
+                  validate: (value) => value.trim().length > 0 || "Please share a few words with us.",
+                  maxLength: { value: 500, message: "Please keep your note under 500 characters." },
+                })}
+                className={`field-textarea${errors.comment ? " has-error" : ""}`}
+                rows={5}
+                maxLength={500}
+                placeholder="What did you enjoy? What could we do a little better?"
+                aria-invalid={Boolean(errors.comment)}
+                aria-describedby={errors.comment ? "comment-error" : "comment-count"}
+              />
+              <div className="textarea-meta">
+                {errors.comment
+                  ? <span className="field-error" id="comment-error">{errors.comment.message}</span>
+                  : <span>Share as much or as little as you like.</span>}
+                <span id="comment-count">{comment.length}/500</span>
+              </div>
+            </div>
+
+            {submitError && (
+              <div className="alert" role="alert">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="9" strokeWidth="1.8" />
+                  <path strokeLinecap="round" strokeWidth="1.8" d="M12 8v4m0 4h.01" />
+                </svg>
+                <span>{submitError}</span>
+              </div>
+            )}
+
+            {isSubmitted && (
+              <div className="alert alert-success" role="status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m5 12 4 4L19 6" />
+                </svg>
+                <span>Thanks for sharing. Your feedback has been received!</span>
+              </div>
+            )}
+
+            <button className="primary-button form-submit" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>Sending your feedback…</>
+              ) : (
+                <>
+                  Send my feedback
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4.5 12h15m-6-6 6 6-6 6" />
+                  </svg>
+                </>
+              )}
             </button>
-          </div>
-        </div>
-      )}
+          </form>
+        </section>
+
+        <aside className="side-column" aria-label="About your feedback">
+          <section className="panel aside-card promise-card">
+            <div className="promise-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" d="M12 21s8-4 8-11V5l-8-3-8 3v5c0 7 8 11 8 11Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" d="m9 12 2 2 4-4" />
+              </svg>
+            </div>
+            <h3>A safe space to share</h3>
+            <p>Your feedback helps us learn and grow. We read every note with care and use your insights to make things better.</p>
+          </section>
+
+          <section className="panel aside-card">
+            <h3>A small thank you</h3>
+            <p>Taking a moment to share your experience means a lot to our team. We appreciate you being here.</p>
+            <div className="privacy-note privacy-note-spaced">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" d="M12 21s8-4 8-11V5l-8-3-8 3v5c0 7 8 11 8 11Z" />
+              </svg>
+              <p>Only your name, rating, and comment are collected with your note.</p>
+            </div>
+          </section>
+        </aside>
+      </div>
     </div>
   );
 };

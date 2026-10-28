@@ -1,208 +1,470 @@
-import React, { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiRequest } from "../api";
+import { useAuth } from "../auth/AuthContext";
+
+const categories = ["Product", "Service", "Teaching", "Event", "Other"];
+const statuses = ["New", "Under Review", "In Progress", "Resolved", "Rejected"];
+
+const formatDate = (date) => {
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return "Date unavailable";
+  return parsedDate.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const getDateKey = (date) => {
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+};
+
+const getInitials = (name) =>
+  name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
 
 const Feedback = () => {
+  const { user, isManager } = useAuth();
   const [feedback, setFeedback] = useState([]);
+  const [summary, setSummary] = useState({
+    total: 0,
+    averageRating: 0,
+    positive: 0,
+    negative: 0,
+    pending: 0,
+    resolved: 0,
+    recent: [],
+  });
   const [isLoading, setIsLoading] = useState(true);
-
-  const [deleteId, setDeleteId] = useState(null); 
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [editError, setEditError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [ratingFilter, setRatingFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState("newest");
+  const cancelButtonRef = useRef(null);
+
+  const loadData = useCallback(async (signal) => {
+    setIsLoading(true);
+    setLoadError("");
+    try {
+      const [items, dashboard] = await Promise.all([
+        apiRequest("/feedback", { signal }),
+        apiRequest("/feedback/dashboard", { signal }),
+      ]);
+      if (!Array.isArray(items)) throw new Error("The feedback service returned an unexpected response.");
+      setFeedback(items);
+      setSummary(dashboard);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setLoadError(error.message || "We couldn't load feedback. Please try again.");
+      }
+    } finally {
+      if (!signal?.aborted) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const getFeedbacks = async () => {
-      try {
-        const responce = await fetch(
-          "https://feedback-manager-fs.vercel.app/feedback"
-        );
-        const data = await responce.json();
-        setFeedback(data);
-      } catch (error) {
-        console.error("Error fetching feedback:", error);
-      } finally {
-        setIsLoading(false);
+    const controller = new AbortController();
+    loadData(controller.signal);
+    return () => controller.abort();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!deleteId && !editing) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && !isSaving && !isDeleting) {
+        setDeleteId(null);
+        setEditing(null);
       }
     };
-    getFeedbacks();
-  }, []);
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    cancelButtonRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [deleteId, editing, isDeleting, isSaving]);
+
+  const visibleFeedback = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    const items = feedback.filter((item) => {
+      const matchesSearch = !query
+        || `${item.name ?? ""} ${item.comment ?? ""}`.toLocaleLowerCase().includes(query);
+      const matchesCategory = !categoryFilter || item.category === categoryFilter;
+      const matchesRating = !ratingFilter || Number(item.rating) === Number(ratingFilter);
+      const matchesStatus = !statusFilter || item.status === statusFilter;
+      const matchesDate = !dateFilter || getDateKey(item.createdAt) === dateFilter;
+      return matchesSearch && matchesCategory && matchesRating && matchesStatus && matchesDate;
+    });
+
+    return items.sort((first, second) => {
+      const firstDate = new Date(first.createdAt ?? 0).getTime() || 0;
+      const secondDate = new Date(second.createdAt ?? 0).getTime() || 0;
+      if (sortOrder === "oldest") return firstDate - secondDate;
+      if (sortOrder === "highest") return Number(second.rating) - Number(first.rating);
+      if (sortOrder === "lowest") return Number(first.rating) - Number(second.rating);
+      return secondDate - firstDate;
+    });
+  }, [categoryFilter, dateFilter, feedback, ratingFilter, search, sortOrder, statusFilter]);
+
+  const hasFilters = Boolean(search.trim() || categoryFilter || ratingFilter || statusFilter || dateFilter);
+  const selectedFeedback = feedback.find((item) => item._id === deleteId);
+
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter("");
+    setRatingFilter("");
+    setStatusFilter("");
+    setDateFilter("");
+    setSortOrder("newest");
+  };
+
+  const exportCsv = () => {
+    const escapeCell = (value) => {
+      const text = String(value ?? "");
+      const safeText = /^[\t\r\n=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safeText.replaceAll('"', '""')}"`;
+    };
+    const rows = [
+      ["Name", "Rating", "Category", "Status", "Comment", "Submitted"],
+      ...visibleFeedback.map((item) => [
+        item.anonymous ? "Anonymous" : item.name,
+        item.rating,
+        item.category,
+        item.status,
+        item.comment,
+        formatDate(item.createdAt),
+      ]),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "kindred-feedback.csv";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const openEditor = (item) => {
+    setEditing({
+      ...item,
+      rating: String(item.rating),
+      anonymous: Boolean(item.anonymous),
+      status: item.status || "New",
+      category: item.category || "Other",
+    });
+    setEditError("");
+  };
+
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    if (!editing) return;
+    setIsSaving(true);
+    setEditError("");
+    setActionError("");
+    const body = {
+      comment: editing.comment,
+      rating: Number(editing.rating),
+      category: editing.category,
+      anonymous: editing.anonymous,
+    };
+    if (!editing.anonymous) body.name = editing.name;
+    if (isManager) body.status = editing.status;
+
+    try {
+      const updated = await apiRequest(`/feedback/${editing._id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setFeedback((previous) => previous.map((item) => item._id === updated._id ? updated : item));
+      setEditing(null);
+      setActionError("Feedback updated successfully.");
+      const dashboard = await apiRequest("/feedback/dashboard");
+      setSummary(dashboard);
+    } catch (error) {
+      setEditError(error.message || "We couldn't save your changes.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-
     setIsDeleting(true);
+    setDeleteError("");
+    setActionError("");
     try {
-      const responce = await fetch(
-        `https://feedback-manager-fs.vercel.app/feedback/${deleteId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      if (responce.ok) {
-        setFeedback((prev) => prev.filter((f) => f._id !== deleteId));
-        setDeleteId(null);
-        setShowSuccessModal(true);
-      } else {
-        const errorData = await responce.json();
-        console.error("Failed to delete:", errorData.message);
-      }
+      await apiRequest(`/feedback/${deleteId}`, { method: "DELETE" });
+      setFeedback((previous) => previous.filter((item) => item._id !== deleteId));
+      setDeleteId(null);
+      setActionError("Feedback deleted.");
+      const dashboard = await apiRequest("/feedback/dashboard");
+      setSummary(dashboard);
     } catch (error) {
-      console.log(error);
+      setDeleteError(error.message || "We couldn't delete this feedback.");
     } finally {
       setIsDeleting(false);
     }
   };
 
+  const stats = [
+    { label: "Total feedback", value: summary.total, icon: "bubble", color: "" },
+    { label: "Average rating", value: `${Number(summary.averageRating || 0).toFixed(1)} / 5`, icon: "star", color: "gold" },
+    { label: "Positive · 4–5★", value: summary.positive, icon: "positive", color: "" },
+    { label: "Negative · 1–2★", value: summary.negative, icon: "negative", color: "orange" },
+    { label: "Pending", value: summary.pending, icon: "pending", color: "gold" },
+    { label: "Resolved", value: summary.resolved, icon: "resolved", color: "" },
+  ];
+
   return (
-    <div className="max-w-6xl mx-auto py-6 relative">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 mb-8 border-b border-slate-200">
+    <div className="feedback-page">
+      <header className="page-heading">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            User Feedback
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Review and manage incoming community comments and ratings.
+          <p className="eyebrow"><span className="eyebrow-dot" /> {isManager ? "Your feedback workspace" : "Your feedback space"}</p>
+          <h1>{isManager ? "Feedback dashboard" : "My feedback"}</h1>
+          <p className="page-description">
+            {isManager
+              ? "Understand what people are saying and keep every note moving."
+              : "Track your submissions and share more thoughts whenever you like."}
           </p>
         </div>
-
-        <div className="flex items-center space-x-3 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-xs">
-          <label htmlFor="date-filter" className="text-xs font-semibold text-slate-600 whitespace-nowrap uppercase tracking-wider">
-            Filter by Date:
-          </label>
-          <input
-            id="date-filter"
-            type="date"
-            className="text-sm text-slate-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
-          />
+        <div className="dashboard-actions">
+          <button type="button" className="secondary-button" onClick={() => loadData()} disabled={isLoading}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M20 7v5h-5M4 17v-5h5m-4.1-3a8 8 0 0 1 13.2-2L20 12M4 12l1.9 5a8 8 0 0 0 13.2-2" />
+            </svg>
+            Refresh
+          </button>
+          <button type="button" className="primary-button" onClick={exportCsv} disabled={!visibleFeedback.length}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" />
+            </svg>
+            Export CSV
+          </button>
         </div>
-      </div>
+      </header>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs animate-pulse space-y-4">
-              <div className="h-4 bg-slate-200 rounded w-1/2"></div>
-              <div className="h-12 bg-slate-100 rounded"></div>
-              <div className="h-4 bg-slate-200 rounded w-1/3"></div>
+      {actionError && (
+        <div className="alert alert-success alert-offset" role="status">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m5 12 4 4L19 6" />
+          </svg>
+          <span>{actionError}</span>
+          <button type="button" className="clear-filters" onClick={() => setActionError("")}>Dismiss</button>
+        </div>
+      )}
+
+      <section className="stats-grid stats-grid-six" aria-label="Feedback summary">
+        {stats.map((stat) => (
+          <article className="stat-card" key={stat.label}>
+            <span className={`stat-icon ${stat.color}`}>
+              {stat.icon === "star" ? (
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2.8 2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93L12 2.8Z" /></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  {stat.icon === "bubble" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 8h10M7 12h6m-9 8 3.2-3.2A2 2 0 0 1 8.6 16H17a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v13Z" />}
+                  {stat.icon === "positive" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M20.8 8.6c0 5.2-8.8 11.4-8.8 11.4S3.2 13.8 3.2 8.6A4.6 4.6 0 0 1 12 6.1a4.6 4.6 0 0 1 8.8 2.5Z" />}
+                  {stat.icon === "negative" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 20s-8-4-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 7-8 11-8 11Zm-2-9h4" />}
+                  {stat.icon === "pending" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 8v4l3 2m5-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" />}
+                  {stat.icon === "resolved" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="m5 12 4 4L19 6" />}
+                </svg>
+              )}
+            </span>
+            <div>
+              <p className="stat-label">{stat.label}</p>
+              <p className="stat-value">{stat.value}</p>
             </div>
-          ))}
-        </div>
-      ) : feedback.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
-          <p className="text-slate-500 font-medium">No feedback items found.</p>
-        </div>
+          </article>
+        ))}
+      </section>
+
+      {loadError ? (
+        <section className="empty-state" role="alert">
+          <span className="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 9v4m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3l-7.5-13.1a2 2 0 0 0-3.4 0Z" /></svg>
+          </span>
+          <h2>We couldn’t load the feedback</h2>
+          <p>{loadError}</p>
+          <button className="primary-button" type="button" onClick={() => loadData()}>Try again</button>
+        </section>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {feedback.map((f) => (
-            <div
-              key={f._id}
-              className="bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-200 p-6 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <h3 className="font-bold text-slate-900 text-lg leading-snug">
-                    {f.name}
-                  </h3>
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
-                    ★ {f.rating}
-                  </span>
-                </div>
-
-                <p className="text-slate-600 text-sm leading-relaxed mb-6">
-                  "{f.comment}"
-                </p>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-medium">
-                  {new Date(f.createdAt).toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
-
-                <button
-                  onClick={() => setDeleteId(f._id)}
-                  className="inline-flex items-center text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors duration-150 focus:ring-2 focus:ring-red-500/20 outline-none cursor-pointer"
-                >
-                  <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Delete
-                </button>
-              </div>
+        <>
+          <section className="toolbar" aria-label="Filter feedback">
+            <div className="search-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="11" cy="11" r="7" strokeWidth="1.8" /><path strokeLinecap="round" strokeWidth="1.8" d="m16 16 4 4" /></svg>
+              <input type="search" className="filter-control search-input" aria-label="Search feedback" placeholder="Search a name or comment..." value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
-          ))}
+            <select className="filter-control" aria-label="Filter by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="">All categories</option>
+              {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+            <select className="filter-control" aria-label="Filter by rating" value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)}>
+              <option value="">All ratings</option>
+              {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? "star" : "stars"}</option>)}
+            </select>
+            {isManager && (
+              <select className="filter-control" aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="">All statuses</option>
+                {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
+            )}
+            <input type="date" className="filter-control" aria-label="Filter by date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
+            <select className="filter-control" aria-label="Sort feedback" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="highest">Highest rated</option>
+              <option value="lowest">Lowest rated</option>
+            </select>
+          </section>
+
+          <div className="result-line">
+            <span><strong>Recent submissions</strong> · {isLoading ? "Loading…" : `${visibleFeedback.length} ${visibleFeedback.length === 1 ? "note" : "notes"}`}</span>
+            {hasFilters && <button type="button" className="clear-filters" onClick={clearFilters}>Clear filters</button>}
+          </div>
+
+          {isLoading ? (
+            <div className="skeleton-grid" aria-label="Loading feedback">
+              {[1, 2, 3].map((item) => (
+                <div className="skeleton-card" key={item} aria-hidden="true">
+                  <div className="skeleton-line medium" /><div className="skeleton-line short" />
+                  <div className="skeleton-line long" /><div className="skeleton-line long" />
+                  <div className="skeleton-line medium" />
+                </div>
+              ))}
+            </div>
+          ) : visibleFeedback.length ? (
+            <section className="feedback-grid" aria-label="Recent feedback">
+              {visibleFeedback.map((item) => (
+                <article className="feedback-card" key={item._id}>
+                  <div className="card-topline">
+                    <div className="person">
+                      <span className="avatar" aria-hidden="true">{getInitials(item.anonymous ? "Anonymous" : (item.name || user.name))}</span>
+                      <div>
+                        <h2>{item.anonymous ? "Anonymous" : (item.name || user.name)}</h2>
+                        <p>{formatDate(item.createdAt)}</p>
+                      </div>
+                    </div>
+                    <span className="rating-badge" aria-label={`${item.rating} out of 5 stars`}>
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2.8 2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93L12 2.8Z" /></svg>
+                      {item.rating}
+                    </span>
+                  </div>
+                  <div className="feedback-tags">
+                    <span className="category-tag">{item.category || "Other"}</span>
+                    <span className={`status-tag status-${(item.status || "New").toLowerCase().replaceAll(" ", "-")}`}>{item.status || "New"}</span>
+                  </div>
+                  <p className="card-comment">{item.comment}</p>
+                  <div className="card-bottom">
+                    <span className="card-date">{formatDate(item.createdAt)}</span>
+                    <div className="card-actions">
+                      <button type="button" className="edit-button" onClick={() => openEditor(item)} aria-label={`Edit feedback by ${item.anonymous ? "Anonymous" : item.name}`}>
+                        Edit
+                      </button>
+                      <button type="button" className="delete-button" onClick={() => { setDeleteId(item._id); setDeleteError(""); }} aria-label={`Delete feedback by ${item.anonymous ? "Anonymous" : item.name}`}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 7h16m-10 4v6m4-6v6M5 7l1 13h12l1-13M9 7V4h6v3" /></svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </section>
+          ) : (
+            <section className="empty-state">
+              <span className="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 8h10M7 12h6m-9 8 3.2-3.2A2 2 0 0 1 8.6 16H17a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v13Z" /></svg></span>
+              <h2>{hasFilters ? "No feedback matches those filters" : "Your first note is waiting"}</h2>
+              <p>{hasFilters ? "Try changing your search or clearing the filters." : "There are no feedback submissions yet. Share a note to get started."}</p>
+              {hasFilters && <button className="secondary-button" type="button" onClick={clearFilters}>Clear filters</button>}
+            </section>
+          )}
+        </>
+      )}
+
+      {editing && (
+        <div className="modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !isSaving) setEditing(null);
+        }}>
+          <section className="modal-card edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+            <span className="modal-icon success">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="m15.2 5.2 3.6 3.6M4 20l4.4-.9L19 7.5a2.1 2.1 0 0 0-3-3L5.4 15.1 4 20Z" /></svg>
+            </span>
+            <h2 id="edit-title">Edit feedback</h2>
+            <form className="form-fields edit-form" onSubmit={saveEdit}>
+              {!editing.anonymous && (
+                <div>
+                  <label className="field-label" htmlFor="edit-name">Name</label>
+                  <input id="edit-name" className="field-input" maxLength={80} value={editing.name || ""} onChange={(event) => setEditing({ ...editing, name: event.target.value })} required />
+                </div>
+              )}
+              <div>
+                <label className="field-label" htmlFor="edit-category">Category</label>
+                <select id="edit-category" className="field-input" value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>
+                  {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="edit-rating">Rating</label>
+                <select id="edit-rating" className="field-input" value={editing.rating} onChange={(event) => setEditing({ ...editing, rating: event.target.value })}>
+                  {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? "star" : "stars"}</option>)}
+                </select>
+              </div>
+              {isManager && (
+                <div>
+                  <label className="field-label" htmlFor="edit-status">Status</label>
+                  <select id="edit-status" className="field-input" value={editing.status} onChange={(event) => setEditing({ ...editing, status: event.target.value })}>
+                    {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="field-label" htmlFor="edit-comment">Comment</label>
+                <textarea id="edit-comment" className="field-textarea" maxLength={2000} value={editing.comment} onChange={(event) => setEditing({ ...editing, comment: event.target.value })} required />
+              </div>
+              {editError && <div className="alert" role="alert">{editError}</div>}
+              <div className="modal-actions">
+                <button ref={cancelButtonRef} type="button" className="secondary-button" onClick={() => setEditing(null)} disabled={isSaving}>Cancel</button>
+                <button type="submit" className="primary-button" disabled={isSaving}>{isSaving ? "Saving…" : "Save changes"}</button>
+              </div>
+            </form>
+          </section>
         </div>
       )}
 
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl border border-slate-100 transform transition-all scale-100 animate-in zoom-in-95 duration-200">
-            {/* Warning Icon */}
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+        <div className="modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !isDeleting) setDeleteId(null);
+        }}>
+          <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description">
+            <span className="modal-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 9v3m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3l-7.5-13.1a2 2 0 0 0-3.4 0Z" /></svg>
+            </span>
+            <h2 id="delete-title">Delete this feedback?</h2>
+            <p id="delete-description">{selectedFeedback ? `This will permanently remove ${selectedFeedback.anonymous ? "this anonymous" : selectedFeedback.name + "’s"} feedback.` : "This feedback will be permanently removed."}</p>
+            {deleteError && <div className="alert delete-error" role="alert">{deleteError}</div>}
+            <div className="modal-actions">
+              <button ref={cancelButtonRef} type="button" className="secondary-button" onClick={() => setDeleteId(null)} disabled={isDeleting}>Keep it</button>
+              <button type="button" className="danger-button" onClick={confirmDelete} disabled={isDeleting}>{isDeleting ? "Deleting…" : "Delete feedback"}</button>
             </div>
-
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Feedback?</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              Are you sure you want to delete this feedback item? This action cannot be undone.
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteId(null)}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm rounded-xl transition-colors duration-150 outline-none cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium text-sm rounded-xl shadow-md shadow-red-500/20 transition-colors duration-150 outline-none flex items-center justify-center space-x-2 cursor-pointer"
-              >
-                {isDeleting ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <span>Confirm</span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl border border-slate-100 transform transition-all scale-100 animate-in zoom-in-95 duration-200">
-            {/* Success Icon */}
-            <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Successfully Deleted</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              The selected feedback record has been removed.
-            </p>
-
-            <button
-              onClick={() => setShowSuccessModal(false)}
-              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-xl transition-colors duration-150 outline-none cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
+          </section>
         </div>
       )}
     </div>

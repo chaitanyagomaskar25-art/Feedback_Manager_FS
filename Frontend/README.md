@@ -1,16 +1,30 @@
-# React + Vite
+# Kindred Feedback
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Responsive feedback portal with account registration, role-aware dashboards, and feedback moderation.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Use Node.js 18 or newer.
 
-## React Compiler
+```sh
+npm ci
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+By default the frontend connects to the API at `http://localhost:5000`. Set
+`VITE_API_URL` in a local `.env` file to point to a deployed API instead:
 
-## Expanding the Oxlint configuration
+```env
+VITE_API_URL=https://your-api.example.com
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Accounts and access
+
+- Registering creates a regular **User** account.
+- Users can create feedback, see their own dashboard, and edit or delete their own submissions.
+- **Feedback Managers** and **Admins** can review all submissions and update their status.
+- **Admins** can also manage account roles from **People**.
+
+The first admin account is created through the backend's one-time setup endpoint.
+See [the backend setup guide](../Backend/README.md) for required environment
+variables and the setup request.
